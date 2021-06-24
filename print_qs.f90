@@ -48,15 +48,15 @@ REAL :: T  ! temperature [K]
 
 WRITE (*,*) "Over water"
 WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
-DO n=-40,40
-  T = 273.15 - n
+DO n=-40,40 ! in degC
+  T = n + 273.15 ! from degC to K
   WRITE (*,*) n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula(T) !, WagnerPruss_Ice(T), Improved_Magnus_Ice(T)
 END DO
 
 WRITE (*,*) "Over Ice"
 WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
-DO n=-40,40
-  T = 273.15 - n
+DO n=-40,40 ! in degC
+  T = n + 273.15  ! from degC to K
   WRITE (*,*) n, WagnerPruss_Ice(T), Improved_Magnus_Ice(T), Huang_Ice(T), dales_formula_ice(T)
 END DO
 
