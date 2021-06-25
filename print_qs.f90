@@ -2,6 +2,12 @@ PROGRAM PRINTQS
 IMPLICIT NONE
 
 INTERFACE
+  FUNCTION Heus2010(T, qs, qt)
+    REAL, INTENT(IN) :: T   ! [K] temperature to evalute at (Tl)
+    REAL, INTENT(IN) :: qs  ! []  qsat at this temperature T
+    REAL, INTENT(IN) :: qt  ! []  total liquid water
+  END FUNCTION Heus2010
+
   FUNCTION dales_formula(T)
     REAL :: dales_formula
     REAL, INTENT(IN) :: T
@@ -44,7 +50,19 @@ INTERFACE
 END INTERFACE
 
 INTEGER :: n
-REAL :: T  ! temperature [K]
+REAL :: T, T0  ! temperature [K]
+REAL :: qt, ql  ! [g/kg]
+REAL :: qs
+REAL :: esl
+REAL :: rlvt
+REAL :: beta
+REAL :: p
+REAL :: qsat
+
+REAL, PARAMETER :: eps0 = 0.622
+REAL, PARAMETER :: rd = 287.05
+REAL, PARAMETER :: cp = 1005.0
+REAL, PARAMETER :: rv = 461.5
 
 WRITE (*,*) "Over water"
 WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
@@ -60,7 +78,51 @@ DO n=-40,40 ! in degC
   WRITE (*,*) n, WagnerPruss_Ice(T), Improved_Magnus_Ice(T), Huang_Ice(T), dales_formula_ice(T)
 END DO
 
+! Starting point: oversaturated at ~20 degC and 1 bar
+T0 = 290.0  ! [K]
+p = 1.0E5  ! [Pa]
+qt = 1.E-1 ! WagnerPruss(T) + 0.5E-2
+
+! start
+T = T0
+write(*,*) 'T, qt, ql'
+
+DO n=1,4
+  ! condens water
+  rlvt = 3151378 - 2386*T  ! TODO: independent from T
+  beta = eps0*rlvt**2/(rd*cp*T*T)
+  esl  = Improved_Magnus(T)
+  qsat = eps0*esl/(p-(1.-rd/rv)*esl)
+  qs = qsat*(1+beta*qt)/(1+beta*qsat)
+  ql = max(qt - qs, 0.)
+  write(*,*) n, T, qt, qsat, qs, ql
+
+  ! adjust T
+  T = T0 + ql*rlvt/cp
+ENDDO
+
 END PROGRAM
+
+
+! A single step in the iterative procedure from Heus2010 eq (59)
+FUNCTION Heus2010(T, qs, qt)
+  IMPLICIT NONE
+  REAL :: Heus2010
+  REAL, INTENT(IN) :: T   ! [K] temperature to evalute at (Tl)
+  REAL, INTENT(IN) :: qs  ! []  qsat at this temperature T
+  REAL, INTENT(IN) :: qt  ! []  total liquid water
+
+  REAL, PARAMETER :: L = 2.5e6      ! [J/kg] the latent heat of vaporization
+  REAL, PARAMETER :: Rv = 461.5     ! [J/kgK] the gas constant for water vapor
+  REAL, PARAMETER :: c_pd = 1004.0  ! [J/kgK] the heat capacity of dry air
+  REAL, PARAMETER :: c = Rv * c_pd / L**2
+
+  ! Heus2010 = qs * &
+  !   (1. + L**2 * qt / (Rv * c_pd * T**2)) / & 
+  !   (1. + L**2 * qs / (Rv * c_pd * T**2))
+
+  Heus2010 = qs * (c * T*T + qt) / (c * T*T + qs)
+END FUNCTION Heus2010
 
 ! Improved_Magnus [Pa] saturation vapor pressure over water
 ! T [K] temperature
