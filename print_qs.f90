@@ -50,55 +50,69 @@ INTERFACE
 END INTERFACE
 
 INTEGER :: n
-REAL :: T, T0  ! temperature [K]
-REAL :: qt, ql  ! [g/kg]
+REAL :: T, T_prev, T0  ! temperature [K]
+REAL :: qt, qc, qc_prev  ! [g/kg]
 REAL :: qs
-REAL :: esl
+REAL :: esat  ! Saturation vapour pressure [Pa]
 REAL :: rlvt
 REAL :: beta
 REAL :: p
-REAL :: qsat
+REAL :: qsat ! Saturation specific humidity [g/kg]
 
 REAL, PARAMETER :: eps0 = 0.622
 REAL, PARAMETER :: rd = 287.05
 REAL, PARAMETER :: cp = 1005.0
 REAL, PARAMETER :: rv = 461.5
 
-WRITE (*,*) "Over water"
-WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
-DO n=-40,40 ! in degC
-  T = n + 273.15 ! from degC to K
-  WRITE (*,*) n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula(T) !, WagnerPruss_Ice(T), Improved_Magnus_Ice(T)
-END DO
+! WRITE (*,*) "Over water"
+! WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
+! DO n=-40,40 ! in degC
+!   T = n + 273.15 ! from degC to K
+!   WRITE (*,*) n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula(T) !, WagnerPruss_Ice(T), Improved_Magnus_Ice(T)
+! END DO
 
-WRITE (*,*) "Over Ice"
-WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
-DO n=-40,40 ! in degC
-  T = n + 273.15  ! from degC to K
-  WRITE (*,*) n, WagnerPruss_Ice(T), Improved_Magnus_Ice(T), Huang_Ice(T), dales_formula_ice(T)
-END DO
+! WRITE (*,*) "Over Ice"
+! WRITE (*,*) "n, WagnerPruss(T), Improved_Magnus(T), Huang(T), dales_formula"
+! DO n=-40,40 ! in degC
+!   T = n + 273.15  ! from degC to K
+!   WRITE (*,*) n, WagnerPruss_Ice(T), Improved_Magnus_Ice(T), Huang_Ice(T), dales_formula_ice(T)
+! END DO
 
 ! Starting point: oversaturated at ~20 degC and 1 bar
-T0 = 290.0  ! [K]
+T0 = 275.0  ! [K]
 p = 1.0E5  ! [Pa]
-qt = 1.E-1 ! WagnerPruss(T) + 0.5E-2
+qt = (eps0/p) * WagnerPruss(290.0) + 1.E-6
 
 ! start
 T = T0
-write(*,*) 'T, qt, ql'
+qc = 0.0
+write(*,*) 'n, T, qc, deltaT, delatQc'
 
-DO n=1,4
+
+! NOTE: From Heus2010: To calculate q_s~ an implicit equation needs to be solved, because T~ is not directly available
+! and has to be diagnosed from the prognostic variables θl and qt .
+
+! TODO: for the above note, it seems we have an (implicit?) constraint on T via theta_l.
+! that is currently not there, 
+DO n=1,30
+  ! store previous steps
+  T_prev = T
+  qc_prev = qc
+
   ! condens water
   rlvt = 3151378 - 2386*T  ! TODO: independent from T
   beta = eps0*rlvt**2/(rd*cp*T*T)
-  esl  = Improved_Magnus(T)
-  qsat = eps0*esl/(p-(1.-rd/rv)*esl)
+  esat  = Improved_Magnus(T)
+  qsat = eps0*esat/(p-(1.-rd/rv)*esat)
   qs = qsat*(1+beta*qt)/(1+beta*qsat)
-  ql = max(qt - qs, 0.)
-  write(*,*) n, T, qt, qsat, qs, ql
+
+  ! Eq. (53) in Heus2010: "all or nothing" cloud adjustment
+  qc = max(qt - qs, 0.)
 
   ! adjust T
-  T = T0 + ql*rlvt/cp
+  T = T_prev + (qc - qc_prev)*rlvt/cp
+
+  write(*,*) n, T, qc, (T-T_prev), (qc - qc_prev)
 ENDDO
 
 END PROGRAM
@@ -121,7 +135,8 @@ FUNCTION Heus2010(T, qs, qt)
   !   (1. + L**2 * qt / (Rv * c_pd * T**2)) / & 
   !   (1. + L**2 * qs / (Rv * c_pd * T**2))
 
-  Heus2010 = qs * (c * T*T + qt) / (c * T*T + qs)
+  ! Heus2010 = qs * (c * T*T + qt) / (c * T*T + qs)
+  Heus2010 = qs * (1 + qt/(c*T*T)) / (1 + qs/(c*T*T))
 END FUNCTION Heus2010
 
 ! Improved_Magnus [Pa] saturation vapor pressure over water
@@ -154,7 +169,7 @@ FUNCTION WagnerPruss(T)
 
 IMPLICIT NONE
 REAL, INTENT(IN) :: T
-REAL :: WagnerPruss
+REAL :: WagnerPruss  ! saturation water vapour pressure [Pa]
 
 REAL, PARAMETER :: TC = 647.096 ! critical point temperature [K]
 
